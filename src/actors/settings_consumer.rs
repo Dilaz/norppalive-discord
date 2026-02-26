@@ -25,17 +25,23 @@ impl Actor for SettingsConsumerActor {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        tracing::info!("SettingsConsumerActor started.");
         ctx.notify(StartConsuming);
+    }
+
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
+        tracing::info!("SettingsConsumerActor stopped.");
     }
 }
 
 impl Handler<StartConsuming> for SettingsConsumerActor {
     type Result = ();
 
-    fn handle(&mut self, _msg: StartConsuming, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: StartConsuming, ctx: &mut Self::Context) -> Self::Result {
         let broker = self.broker_addr.clone();
         let topic = self.topic.clone();
         let cache = self.cache.clone();
+        let addr = ctx.address();
 
         actix::spawn(async move {
             let consumer: StreamConsumer = match ClientConfig::new()
@@ -46,13 +52,17 @@ impl Handler<StartConsuming> for SettingsConsumerActor {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::error!("Failed to create settings Kafka consumer: {e}");
+                    tracing::error!("Failed to create settings Kafka consumer: {e}. Retrying in 5s...");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    addr.do_send(StartConsuming);
                     return;
                 }
             };
 
             if let Err(e) = consumer.subscribe(&[&topic]) {
-                tracing::error!("Failed to subscribe to settings topic {topic}: {e}");
+                tracing::error!("Failed to subscribe to settings topic {topic}: {e}. Retrying in 5s...");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                addr.do_send(StartConsuming);
                 return;
             }
 
@@ -75,11 +85,12 @@ impl Handler<StartConsuming> for SettingsConsumerActor {
                                             map.insert(guild_id, cfg);
                                         }
                                         None => {
+                                            let mut map = cache.write().await;
                                             tracing::warn!(
                                                 "Settings update for guild {} has no valid channel_id, removing from cache",
                                                 guild_id
                                             );
-                                            cache.write().await.remove(&guild_id);
+                                            map.remove(&guild_id);
                                         }
                                     }
                                 }
