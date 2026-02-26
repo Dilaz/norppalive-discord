@@ -16,5 +16,5 @@ RUN apt-get update && apt-get install -y \
     && useradd -r -s /bin/false nonroot
 WORKDIR /usr/local/bin
 COPY --from=builder /usr/src/app/target/release/norppalive-discord .
-ENTRYPOINT ["/usr/local/bin/norppalive-discord"]
 USER nonroot
+ENTRYPOINT ["/usr/local/bin/norppalive-discord"]
