@@ -9,8 +9,10 @@ pub struct GuildConfig {
     pub guild_id: String,
     pub channel_id: u64,
     pub role_id: Option<u64>,
-    pub min_confidence: f32,
+    pub min_confidence: f64,
+    /// HH:MM in 24-hour UTC, e.g. "08:00". Empty string means no restriction.
     pub active_hours_start: String,
+    /// HH:MM in 24-hour UTC, e.g. "22:00". Empty string means no restriction.
     pub active_hours_end: String,
     pub bot_enabled: bool,
 }
@@ -27,16 +29,22 @@ pub fn new_cache() -> SettingsCache {
 pub struct SettingsUpdateEvent {
     pub guild_id: String,
     pub channel_id: String,
-    pub role_id: String,
-    pub min_confidence: f32,
+    #[serde(default)]
+    pub role_id: Option<String>,
+    pub min_confidence: f64,
+    /// HH:MM in 24-hour UTC, e.g. "08:00". Empty string means no restriction.
     pub active_hours_start: String,
+    /// HH:MM in 24-hour UTC, e.g. "22:00". Empty string means no restriction.
     pub active_hours_end: String,
     pub enabled: bool,
 }
 
-/// Parse a channel or role snowflake string. Returns None if empty or invalid.
+/// Parse a channel or role snowflake string. Returns None if empty, zero, or invalid.
 pub fn parse_snowflake(s: &str) -> Option<u64> {
-    if s.is_empty() { None } else { s.parse::<u64>().ok() }
+    match s.parse::<u64>().ok() {
+        Some(0) | None => None,
+        id => id,
+    }
 }
 
 /// Build a GuildConfig from a SettingsUpdateEvent.
@@ -45,7 +53,7 @@ pub fn config_from_event(ev: &SettingsUpdateEvent) -> Option<GuildConfig> {
     Some(GuildConfig {
         guild_id: ev.guild_id.clone(),
         channel_id,
-        role_id: parse_snowflake(&ev.role_id),
+        role_id: ev.role_id.as_deref().and_then(parse_snowflake),
         min_confidence: ev.min_confidence,
         active_hours_start: ev.active_hours_start.clone(),
         active_hours_end: ev.active_hours_end.clone(),
@@ -73,6 +81,11 @@ mod tests {
     }
 
     #[test]
+    fn parse_snowflake_zero_returns_none() {
+        assert_eq!(parse_snowflake("0"), None);
+    }
+
+    #[test]
     fn settings_update_event_deserializes() {
         let json = r#"{
             "guild_id": "111",
@@ -85,7 +98,7 @@ mod tests {
         }"#;
         let ev: SettingsUpdateEvent = serde_json::from_str(json).unwrap();
         assert_eq!(ev.guild_id, "111");
-        assert!((ev.min_confidence - 0.75).abs() < 0.001);
+        assert_eq!(ev.min_confidence, 0.75);
         assert!(ev.enabled);
     }
 
@@ -94,8 +107,8 @@ mod tests {
         let ev = SettingsUpdateEvent {
             guild_id: "1".into(),
             channel_id: "999".into(),
-            role_id: "".into(),
-            min_confidence: 0.5,
+            role_id: None,
+            min_confidence: 0.5f64,
             active_hours_start: "".into(),
             active_hours_end: "".into(),
             enabled: true,
@@ -110,12 +123,32 @@ mod tests {
         let ev = SettingsUpdateEvent {
             guild_id: "1".into(),
             channel_id: "".into(), // missing channel → skip guild
-            role_id: "".into(),
+            role_id: None,
             min_confidence: 0.5,
             active_hours_start: "".into(),
             active_hours_end: "".into(),
             enabled: true,
         };
         assert!(config_from_event(&ev).is_none());
+    }
+
+    #[test]
+    fn config_from_event_full_roundtrip() {
+        let ev = SettingsUpdateEvent {
+            guild_id: "42".into(),
+            channel_id: "100".into(),
+            role_id: Some("200".into()),
+            min_confidence: 0.85,
+            active_hours_start: "08:00".into(),
+            active_hours_end: "22:00".into(),
+            enabled: true,
+        };
+        let cfg = config_from_event(&ev).unwrap();
+        assert_eq!(cfg.guild_id, "42");
+        assert_eq!(cfg.channel_id, 100u64);
+        assert_eq!(cfg.role_id, Some(200u64));
+        assert_eq!(cfg.min_confidence, 0.85);
+        assert_eq!(cfg.active_hours_start, "08:00");
+        assert!(cfg.bot_enabled);
     }
 }
