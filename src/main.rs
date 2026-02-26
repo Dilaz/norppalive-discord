@@ -9,6 +9,7 @@ use actix::Actor;
 
 mod error;
 use error::NorppaliveError;
+mod settings;
 mod models;
 mod actors;
 
