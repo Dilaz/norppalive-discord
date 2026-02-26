@@ -75,7 +75,7 @@ async fn main() -> Result<(), NorppaliveError> {
     let cache = settings::new_cache();
     grpc::load_settings(&backend_url, &cache)
         .await
-        .map_err(|e| NorppaliveError::Config(format!("Failed to connect to backend: {e}")))?;
+        .map_err(|e| NorppaliveError::Config(format!("Failed to load guild settings from backend: {e}")))?;
 
     let serenity_http_client = Arc::new(Http::new(&discord_token));
 
