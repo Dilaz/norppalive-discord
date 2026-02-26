@@ -48,12 +48,6 @@ impl EventHandler for Handler {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct DetectionMessage {
-    image: String,
-    message: String,
-}
-
 #[actix::main]
 async fn main() -> Result<(), NorppaliveError> {
     dotenvy::dotenv().ok();

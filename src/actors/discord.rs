@@ -47,7 +47,7 @@ impl Handler<SendDetection> for DiscordActor {
             Ok(b) => b,
             Err(e) => {
                 let err = format!("Failed to decode image: {e}");
-                tracing::error!(err);
+                tracing::error!("{}", err);
                 return Err(err);
             }
         };
@@ -60,6 +60,7 @@ impl Handler<SendDetection> for DiscordActor {
             let guilds: Vec<_> = {
                 let map = settings.read().await;
                 map.values()
+                    // TODO: also enforce min_confidence threshold and active_hours_start/end time window
                     .filter(|g| g.bot_enabled)
                     .cloned()
                     .collect()
