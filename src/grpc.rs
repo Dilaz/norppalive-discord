@@ -15,6 +15,7 @@ pub async fn load_settings(backend_url: &str, cache: &SettingsCache) -> Result<(
         .await?;
 
     let mut map = cache.write().await;
+    let mut loaded_count: usize = 0;
     for s in resp.into_inner().settings {
         // Reuse config_from_event logic by converting proto → SettingsUpdateEvent.
         // proto GuildSettings.bot_enabled maps to SettingsUpdateEvent.enabled.
@@ -23,6 +24,7 @@ pub async fn load_settings(backend_url: &str, cache: &SettingsCache) -> Result<(
             guild_id: s.guild_id,
             channel_id: s.channel_id,
             role_id: if s.role_id.is_empty() { None } else { Some(s.role_id) },
+            // proto float (f32) cast to f64; f32 precision is sufficient for 0.0-1.0 thresholds.
             min_confidence: s.min_confidence as f64,
             active_hours_start: s.active_hours_start,
             active_hours_end: s.active_hours_end,
@@ -32,12 +34,13 @@ pub async fn load_settings(backend_url: &str, cache: &SettingsCache) -> Result<(
             Some(cfg) => {
                 info!("Loaded settings for guild {}: channel={}", cfg.guild_id, cfg.channel_id);
                 map.insert(cfg.guild_id.clone(), cfg);
+                loaded_count += 1;
             }
             None => {
                 warn!("Guild {} has no valid channel_id, skipping", ev.guild_id);
             }
         }
     }
-    info!("Loaded settings for {} guilds.", map.len());
+    info!("Loaded settings for {} guilds.", loaded_count);
     Ok(())
 }
