@@ -23,7 +23,6 @@ pub mod proto {
 }
 
 const DEFAULT_ACTIVITY: &str = "Norbs";
-const DISCORD_CHANNEL_ID_ENV_VAR: &str = "DISCORD_CHANNEL_ID";
 
 struct Handler;
 
@@ -34,7 +33,7 @@ impl EventHandler for Handler {
             let message = CreateMessage::new()
                 .content("Pong!")
                 .flags(MessageFlags::SUPPRESS_EMBEDS);
-                
+
             if let Err(why) = msg.channel_id.send_message(&ctx.http, message).await {
                 error!("Error sending ping response: {why:?}");
             }
@@ -71,15 +70,13 @@ async fn main() -> Result<(), NorppaliveError> {
     let discord_token = var("DISCORD_TOKEN")?;
     let kafka_topic = var("KAFKA_TOPIC")?;
     let kafka_broker = var("KAFKA_BROKER")?;
-    let discord_channel_id_str = var(DISCORD_CHANNEL_ID_ENV_VAR)?;
-    let discord_channel_id = discord_channel_id_str
-        .parse::<u64>()
-        .map_err(|e| NorppaliveError::Config(format!("Invalid {}: {} - {}", DISCORD_CHANNEL_ID_ENV_VAR, discord_channel_id_str, e)))?;
 
     let serenity_http_client = Arc::new(Http::new(&discord_token));
 
+    let settings_cache = settings::new_cache();
+
     info!("Starting DiscordActor...");
-    let discord_actor_addr = actors::discord::DiscordActor::new(serenity_http_client, discord_channel_id).start();
+    let discord_actor_addr = actors::discord::DiscordActor::new(serenity_http_client, settings_cache).start();
 
     info!("Starting KafkaConsumerActor...");
     let _kafka_actor_addr = actors::kafka::KafkaRdkafkaActor::new(kafka_broker, kafka_topic, discord_actor_addr).start();

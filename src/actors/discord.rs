@@ -1,10 +1,11 @@
 use actix::prelude::*;
 use serenity::all::{ChannelId, CreateAttachment, Http, MessageFlags};
 use std::sync::Arc;
-use crate::models::DetectionMessage;
 use base64::Engine;
 use serde_json::json;
-use std::env;
+
+use crate::models::DetectionMessage;
+use crate::settings::SettingsCache;
 
 // Message for the DiscordActor to send a detection
 #[derive(Message, Clone)]
@@ -15,15 +16,12 @@ pub struct SendDetection {
 
 pub struct DiscordActor {
     http_client: Arc<Http>,
-    channel_id: ChannelId,
+    settings: SettingsCache,
 }
 
 impl DiscordActor {
-    pub fn new(http_client: Arc<Http>, channel_id_val: u64) -> Self {
-        Self {
-            http_client,
-            channel_id: ChannelId::from(channel_id_val),
-        }
+    pub fn new(http_client: Arc<Http>, settings: SettingsCache) -> Self {
+        Self { http_client, settings }
     }
 }
 
@@ -43,47 +41,58 @@ impl Handler<SendDetection> for DiscordActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendDetection, ctx: &mut Context<Self>) -> Self::Result {
-        tracing::debug!("DiscordActor received SendDetection for message: {}", msg.detection.message);
-        let detection = msg.detection;
-        
-        let image_bytes = match base64::engine::general_purpose::STANDARD.decode(&detection.image) {
-            Ok(bytes) => bytes,
+        tracing::debug!("DiscordActor received SendDetection: {}", msg.detection.message);
+
+        let image_bytes = match base64::engine::general_purpose::STANDARD.decode(&msg.detection.image) {
+            Ok(b) => b,
             Err(e) => {
-                let err_msg = format!("Failed to decode image: {}", e);
-                tracing::error!(err_msg);
-                return Err(err_msg);
+                let err = format!("Failed to decode image: {e}");
+                tracing::error!(err);
+                return Err(err);
             }
         };
 
-        let channel_id = self.channel_id;
         let http_client = self.http_client.clone();
-        let mut message_content = detection.message.clone(); // Clone for the async block
-
-        // Append the role ping
-        match env::var("PING_ROLE_ID") {
-            Ok(role_id) => {
-                message_content.push_str(&format!("\n\n<@&{}>", role_id));
-            }
-            Err(e) => {
-                tracing::warn!("Failed to get PING_ROLE_ID: {}. Skipping role ping.", e);
-            }
-        }
+        let settings = self.settings.clone();
+        let text = msg.detection.message.clone();
 
         let fut = async move {
-            let attachment = CreateAttachment::bytes(image_bytes, "image.jpg");
-            let message_payload = json!({
-                "content": message_content,
-                "flags": MessageFlags::SUPPRESS_EMBEDS.bits()
-            });
+            let guilds: Vec<_> = {
+                let map = settings.read().await;
+                map.values()
+                    .filter(|g| g.bot_enabled)
+                    .cloned()
+                    .collect()
+            };
 
-            match http_client.send_message(channel_id, vec![attachment], &message_payload).await {
-                Ok(_) => tracing::info!("Message sent to Discord by DiscordActor."),
-                Err(e) => tracing::error!("DiscordActor failed to send message: {:?}", e),
+            if guilds.is_empty() {
+                tracing::warn!("No enabled guilds in settings cache, dropping detection.");
+                return;
+            }
+
+            for guild in guilds {
+                let mut content = text.clone();
+                if let Some(role_id) = guild.role_id {
+                    content.push_str(&format!("\n\n<@&{role_id}>"));
+                }
+
+                let attachment = CreateAttachment::bytes(image_bytes.clone(), "image.jpg");
+                let payload = json!({
+                    "content": content,
+                    "flags": MessageFlags::SUPPRESS_EMBEDS.bits()
+                });
+
+                match http_client
+                    .send_message(ChannelId::from(guild.channel_id), vec![attachment], &payload)
+                    .await
+                {
+                    Ok(_) => tracing::info!("Sent detection to guild {} channel {}", guild.guild_id, guild.channel_id),
+                    Err(e) => tracing::error!("Failed to send to guild {} channel {}: {:?}", guild.guild_id, guild.channel_id, e),
+                }
             }
         };
 
-        ctx.spawn(fut.into_actor(self)); // Fire and forget
-
+        ctx.spawn(fut.into_actor(self));
         Ok(())
     }
-} 
+}
