@@ -12,6 +12,15 @@ use error::NorppaliveError;
 mod settings;
 mod models;
 mod actors;
+mod grpc;
+
+pub mod proto {
+    pub mod norppalive {
+        pub mod v1 {
+            tonic::include_proto!("norppalive.v1");
+        }
+    }
+}
 
 const DEFAULT_ACTIVITY: &str = "Norbs";
 const DISCORD_CHANNEL_ID_ENV_VAR: &str = "DISCORD_CHANNEL_ID";
