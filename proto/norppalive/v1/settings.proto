@@ -1,0 +1,45 @@
+syntax = "proto3";
+package norppalive.v1;
+
+service SettingsService {
+  rpc GetSettings(GetSettingsRequest) returns (GetSettingsResponse);
+  rpc UpdateSettings(UpdateSettingsRequest) returns (UpdateSettingsResponse);
+  rpc ToggleBot(ToggleBotRequest) returns (ToggleBotResponse);
+}
+
+message GuildSettings {
+  string guild_id = 1;
+  string channel_id = 2;
+  string role_id = 3;
+  float min_confidence = 4;
+  string active_hours_start = 5;
+  string active_hours_end = 6;
+  bool bot_enabled = 7;
+}
+
+message GetSettingsRequest {
+  string guild_id = 1;
+}
+message GetSettingsResponse {
+  GuildSettings settings = 1;
+}
+
+message UpdateSettingsRequest {
+  string guild_id = 1;
+  optional string channel_id = 2;
+  optional string role_id = 3;
+  optional float min_confidence = 4;
+  optional string active_hours_start = 5;
+  optional string active_hours_end = 6;
+}
+message UpdateSettingsResponse {
+  GuildSettings settings = 1;
+}
+
+message ToggleBotRequest {
+  string guild_id = 1;
+  bool enabled = 2;
+}
+message ToggleBotResponse {
+  GuildSettings settings = 1;
+}

@@ -1,0 +1,13 @@
+syntax = "proto3";
+package norppalive.v1;
+
+import "norppalive/v1/settings.proto";
+
+service BotService {
+  rpc GetAllGuildSettings(GetAllGuildSettingsRequest) returns (GetAllGuildSettingsResponse);
+}
+
+message GetAllGuildSettingsRequest {}
+message GetAllGuildSettingsResponse {
+  repeated GuildSettings settings = 1;
+}
