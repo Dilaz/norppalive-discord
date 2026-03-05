@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discord-bot
+  namespace: norppalive
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discord-bot
+  template:
+    metadata:
+      labels:
+        app: discord-bot
+    spec:
+      containers:
+        - name: discord-bot
+          image: norppalive-discord:latest
+          imagePullPolicy: Never
+          envFrom:
+            - secretRef:
+                name: discord-bot-secrets
+          env:
+            - name: KAFKA_BROKER
+              value: redpanda:9092
+            - name: KAFKA_TOPIC
+              value: detection
+            - name: KAFKA_SETTINGS_TOPIC
+              value: guild-settings-update
+            - name: BACKEND_GRPC_URL
+              value: "http://backend:50051"
+            - name: RUST_LOG
+              value: info

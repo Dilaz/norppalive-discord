@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discord-bot
+  namespace: norppalive
+spec:
+  template:
+    spec:
+      serviceAccountName: discord-bot
+      terminationGracePeriodSeconds: 45
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: discord-bot
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 10"]
+          env:
+            - name: KAFKA_BROKER
+              value: "redpanda.norppalive.svc.cluster.local:9092"
+            - name: BACKEND_GRPC_URL
+              value: "http://backend.norppalive.svc.cluster.local:50051"
