@@ -133,6 +133,154 @@ mod tests {
     }
 
     #[test]
+    fn new_cache_is_empty() {
+        let cache = new_cache();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let map = cache.read().await;
+            assert!(map.is_empty());
+        });
+    }
+
+    #[test]
+    fn parse_snowflake_max_u64() {
+        assert_eq!(parse_snowflake("18446744073709551615"), Some(u64::MAX));
+    }
+
+    #[test]
+    fn parse_snowflake_overflow_returns_none() {
+        // u64::MAX + 1
+        assert_eq!(parse_snowflake("18446744073709551616"), None);
+    }
+
+    #[test]
+    fn parse_snowflake_leading_zeros() {
+        assert_eq!(parse_snowflake("00123"), Some(123));
+    }
+
+    #[test]
+    fn parse_snowflake_negative_string() {
+        assert_eq!(parse_snowflake("-1"), None);
+    }
+
+    #[test]
+    fn config_from_event_zero_channel_returns_none() {
+        let ev = SettingsUpdateEvent {
+            guild_id: "1".into(),
+            channel_id: "0".into(),
+            role_id: None,
+            min_confidence: 0.5,
+            active_hours_start: "".into(),
+            active_hours_end: "".into(),
+            enabled: true,
+        };
+        assert!(config_from_event(&ev).is_none());
+    }
+
+    #[test]
+    fn config_from_event_zero_role_id_becomes_none() {
+        let ev = SettingsUpdateEvent {
+            guild_id: "1".into(),
+            channel_id: "999".into(),
+            role_id: Some("0".into()),
+            min_confidence: 0.5,
+            active_hours_start: "".into(),
+            active_hours_end: "".into(),
+            enabled: true,
+        };
+        let cfg = config_from_event(&ev).unwrap();
+        assert!(cfg.role_id.is_none());
+    }
+
+    #[test]
+    fn config_from_event_disabled_bot() {
+        let ev = SettingsUpdateEvent {
+            guild_id: "1".into(),
+            channel_id: "100".into(),
+            role_id: None,
+            min_confidence: 0.0,
+            active_hours_start: "".into(),
+            active_hours_end: "".into(),
+            enabled: false,
+        };
+        let cfg = config_from_event(&ev).unwrap();
+        assert!(!cfg.bot_enabled);
+    }
+
+    #[test]
+    fn settings_event_deserializes_without_role_id() {
+        let json = r#"{
+            "guild_id": "1",
+            "channel_id": "2",
+            "min_confidence": 0.5,
+            "active_hours_start": "",
+            "active_hours_end": "",
+            "enabled": true
+        }"#;
+        let ev: SettingsUpdateEvent = serde_json::from_str(json).unwrap();
+        assert!(ev.role_id.is_none());
+    }
+
+    #[test]
+    fn settings_event_deserializes_with_null_role_id() {
+        let json = r#"{
+            "guild_id": "1",
+            "channel_id": "2",
+            "role_id": null,
+            "min_confidence": 0.5,
+            "active_hours_start": "",
+            "active_hours_end": "",
+            "enabled": true
+        }"#;
+        let ev: SettingsUpdateEvent = serde_json::from_str(json).unwrap();
+        assert!(ev.role_id.is_none());
+    }
+
+    #[tokio::test]
+    async fn cache_insert_and_read() {
+        let cache = new_cache();
+        {
+            let mut map = cache.write().await;
+            map.insert("guild1".into(), GuildConfig {
+                guild_id: "guild1".into(),
+                channel_id: 100,
+                role_id: None,
+                min_confidence: 0.5,
+                active_hours_start: "".into(),
+                active_hours_end: "".into(),
+                bot_enabled: true,
+            });
+        }
+        let map = cache.read().await;
+        assert_eq!(map.len(), 1);
+        assert_eq!(map["guild1"].channel_id, 100);
+    }
+
+    #[tokio::test]
+    async fn cache_update_overwrites() {
+        let cache = new_cache();
+        let cfg = GuildConfig {
+            guild_id: "g".into(),
+            channel_id: 1,
+            role_id: None,
+            min_confidence: 0.0,
+            active_hours_start: "".into(),
+            active_hours_end: "".into(),
+            bot_enabled: true,
+        };
+        {
+            let mut map = cache.write().await;
+            map.insert("g".into(), cfg);
+        }
+        {
+            let mut map = cache.write().await;
+            map.get_mut("g").unwrap().channel_id = 999;
+        }
+        let map = cache.read().await;
+        assert_eq!(map["g"].channel_id, 999);
+    }
+
+    #[test]
     fn config_from_event_full_roundtrip() {
         let ev = SettingsUpdateEvent {
             guild_id: "42".into(),

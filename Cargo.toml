@@ -23,6 +23,9 @@ tonic-prost = "0.14.5"
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
+[dev-dependencies]
+tokio = { version = "1.45.0", features = ["rt-multi-thread", "macros", "test-util"] }
+
 [build-dependencies]
 tonic-build = "0.14.5"
 tonic-prost-build = "0.14"
