@@ -75,12 +75,12 @@ impl Handler<StartConsuming> for SettingsConsumerActor {
                             match serde_json::from_str::<SettingsUpdateEvent>(payload) {
                                 Ok(ev) => {
                                     let guild_id = ev.guild_id.clone();
-                                    match config_from_event(&ev) {
+                                    match config_from_event(ev) {
                                         Some(cfg) => {
                                             let mut map = cache.write().await;
                                             tracing::info!(
                                                 "Settings updated for guild {}: channel={}, enabled={}",
-                                                guild_id, cfg.channel_id, cfg.bot_enabled
+                                                cfg.guild_id, cfg.channel_id, cfg.bot_enabled
                                             );
                                             map.insert(guild_id, cfg);
                                         }
