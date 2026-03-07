@@ -34,3 +34,7 @@ spec:
               value: "redpanda.norppalive.svc.cluster.local:9092"
             - name: BACKEND_GRPC_URL
               value: "http://backend.norppalive.svc.cluster.local:50051"
+            - name: LOG_CHANNEL_GUILD_ID
+              value: "1373602924462342264"
+            - name: LOG_CHANNEL_ID
+              value: "1373641385428647947"

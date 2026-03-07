@@ -2,7 +2,8 @@ use std::{env::var, sync::Arc};
 use actix::Actor;
 use miette::Result;
 use serenity::all::{
-    ActivityData, Client, CreateMessage, GatewayIntents, Http, MessageFlags, OnlineStatus, Ready,
+    ActivityData, ChannelId, Client, CreateMessage, GatewayIntents, Http, MessageFlags,
+    OnlineStatus, Ready,
 };
 use serenity::async_trait;
 use serenity::prelude::*;
@@ -31,6 +32,7 @@ const DEFAULT_ACTIVITY: &str = "Norbs";
 
 struct Handler {
     kafka_producer: Arc<kafka_producer::BotKafkaProducer>,
+    log_channel_id: Option<u64>,
 }
 
 #[async_trait]
@@ -52,7 +54,7 @@ impl EventHandler for Handler {
         ctx.set_activity(Some(ActivityData::watching(DEFAULT_ACTIVITY)));
     }
 
-    async fn guild_create(&self, _ctx: Context, guild: serenity::all::Guild, is_new: Option<bool>) {
+    async fn guild_create(&self, ctx: Context, guild: serenity::all::Guild, is_new: Option<bool>) {
         // is_new == Some(true) means the bot was just added (not a cache fill on startup)
         if is_new == Some(true) {
             info!("Bot added to guild: {} ({})", guild.name, guild.id);
@@ -64,10 +66,22 @@ impl EventHandler for Handler {
             if let Err(e) = self.kafka_producer.publish_guild_event(&payload).await {
                 error!("Failed to publish guild_join event: {e}");
             }
+
+            if let Some(channel_id) = self.log_channel_id {
+                let msg = CreateMessage::new().content(format!(
+                    "\u{2705} Bot added to **{}** (ID: {}, members: {})",
+                    guild.name,
+                    guild.id,
+                    guild.member_count
+                ));
+                if let Err(e) = ChannelId::new(channel_id).send_message(&ctx.http, msg).await {
+                    error!("Failed to send log channel notification for guild_join: {e}");
+                }
+            }
         }
     }
 
-    async fn guild_delete(&self, _ctx: Context, incomplete: serenity::all::UnavailableGuild, _full: Option<serenity::all::Guild>) {
+    async fn guild_delete(&self, ctx: Context, incomplete: serenity::all::UnavailableGuild, _full: Option<serenity::all::Guild>) {
         if incomplete.unavailable {
             info!("Guild {} is unavailable (outage), not publishing leave event", incomplete.id);
             return;
@@ -80,6 +94,16 @@ impl EventHandler for Handler {
         };
         if let Err(e) = self.kafka_producer.publish_guild_event(&payload).await {
             error!("Failed to publish guild_leave event: {e}");
+        }
+
+        if let Some(channel_id) = self.log_channel_id {
+            let msg = CreateMessage::new().content(format!(
+                "\u{274c} Bot removed from guild {}",
+                incomplete.id
+            ));
+            if let Err(e) = ChannelId::new(channel_id).send_message(&ctx.http, msg).await {
+                error!("Failed to send log channel notification for guild_leave: {e}");
+            }
         }
     }
 }
@@ -112,6 +136,11 @@ async fn main() -> Result<(), NorppaliveError> {
         .unwrap_or_else(|_| "http://backend:50051".to_string());
 
     let bot_api_key = var("BOT_API_KEY")?;
+
+    let log_channel_id: Option<u64> = var("LOG_CHANNEL_ID")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse().ok());
 
     // Fetch all guild settings from the backend before starting actors
     let cache = settings::new_cache();
@@ -169,6 +198,7 @@ async fn main() -> Result<(), NorppaliveError> {
     let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::GUILDS;
     let handler = Handler {
         kafka_producer: bot_kafka_producer.clone(),
+        log_channel_id,
     };
     let mut serenity_client = Client::builder(&discord_token, intents)
         .event_handler(handler)
