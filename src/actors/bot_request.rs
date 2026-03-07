@@ -190,7 +190,13 @@ async fn handle_is_in_guild(
         correlation_id: correlation_id.to_string(),
         present,
     };
-    let json = serde_json::to_string(&reply).unwrap_or_default();
+    let json = match serde_json::to_string(&reply) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::error!("Failed to serialize is_in_guild reply: {e}");
+            return;
+        }
+    };
     if let Err(e) = kafka_producer.publish_reply(guild_id, &json).await {
         tracing::error!("Failed to publish is_in_guild reply: {e}");
     }
@@ -214,15 +220,25 @@ async fn handle_send_test_message(
                 success: false,
                 error_message: "Invalid channel ID".to_string(),
             };
-            let json = serde_json::to_string(&reply).unwrap_or_default();
-            let _ = kafka_producer.publish_reply(guild_id, &json).await;
+            let json = match serde_json::to_string(&reply) {
+                Ok(json) => json,
+                Err(e) => {
+                    tracing::error!("Failed to serialize error reply for invalid channel ID: {e}");
+                    return;
+                }
+            };
+            if let Err(e) = kafka_producer.publish_reply(guild_id, &json).await {
+                tracing::error!("Failed to publish error reply for invalid channel ID: {e}");
+            }
             return;
         }
     };
 
     let mut content = "Tämä on testiviesti Norppalive-botilta!".to_string();
     if ping_role && !role_id.is_empty() && role_id != "0" {
-        content.push_str(&format!("\n\n<@&{role_id}>"));
+        if let Ok(id) = role_id.parse::<u64>() {
+            content.push_str(&format!("\n\n<@&{id}>"));
+        }
     }
 
     // Use a simple 1x1 pixel JPEG as test image
@@ -276,7 +292,13 @@ async fn handle_send_test_message(
         success,
         error_message,
     };
-    let json = serde_json::to_string(&reply).unwrap_or_default();
+    let json = match serde_json::to_string(&reply) {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::error!("Failed to serialize test message reply: {e}");
+            return;
+        }
+    };
     if let Err(e) = kafka_producer.publish_reply(guild_id, &json).await {
         tracing::error!("Failed to publish test message reply: {e}");
     }

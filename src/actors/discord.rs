@@ -31,12 +31,17 @@ impl DiscordActor {
     }
 }
 
-fn classify_discord_error(error: &str) -> String {
-    let lower = error.to_lowercase();
-    if lower.contains("missing access") || lower.contains("missing permissions") {
-        "missing_permissions".to_string()
-    } else if lower.contains("unknown channel") {
-        "channel_not_found".to_string()
+fn classify_discord_error_code(code: isize) -> &'static str {
+    match code {
+        50001 | 50013 => "missing_permissions",
+        10003 => "channel_not_found",
+        _ => "unknown",
+    }
+}
+
+fn classify_discord_error(error: &serenity::Error) -> String {
+    if let serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(resp)) = error {
+        classify_discord_error_code(resp.error.code).to_string()
     } else {
         "unknown".to_string()
     }
@@ -107,8 +112,8 @@ impl Handler<SendDetection> for DiscordActor {
                 {
                     Ok(_) => tracing::info!("Sent detection to guild {} channel {}", guild.guild_id, guild.channel_id),
                     Err(e) => {
+                        let error_type = classify_discord_error(&e);
                         let error_str = format!("{e:?}");
-                        let error_type = classify_discord_error(&error_str);
                         tracing::error!("Failed to send to guild {} channel {}: {error_str}", guild.guild_id, guild.channel_id);
 
                         let error_payload = crate::kafka_producer::BotErrorPayload {
@@ -136,18 +141,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn classify_missing_access() {
+        assert_eq!(classify_discord_error_code(50001), "missing_permissions");
+    }
+
+    #[test]
     fn classify_missing_permissions() {
-        assert_eq!(classify_discord_error("Missing Access"), "missing_permissions");
-        assert_eq!(classify_discord_error("Missing Permissions"), "missing_permissions");
+        assert_eq!(classify_discord_error_code(50013), "missing_permissions");
     }
 
     #[test]
     fn classify_unknown_channel() {
-        assert_eq!(classify_discord_error("Unknown Channel"), "channel_not_found");
+        assert_eq!(classify_discord_error_code(10003), "channel_not_found");
     }
 
     #[test]
-    fn classify_unknown_error() {
-        assert_eq!(classify_discord_error("some random error"), "unknown");
+    fn classify_other_discord_error() {
+        assert_eq!(classify_discord_error_code(50035), "unknown");
+    }
+
+    #[test]
+    fn classify_non_http_error() {
+        let err = serenity::Error::Other("something");
+        assert_eq!(classify_discord_error(&err), "unknown");
     }
 }
