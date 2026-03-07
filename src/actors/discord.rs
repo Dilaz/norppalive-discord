@@ -4,6 +4,7 @@ use std::sync::Arc;
 use base64::Engine;
 use serde_json::json;
 
+use crate::kafka_producer::BotKafkaProducer;
 use crate::models::DetectionMessage;
 use crate::settings::SettingsCache;
 
@@ -17,11 +18,27 @@ pub struct SendDetection {
 pub struct DiscordActor {
     http_client: Arc<Http>,
     settings: SettingsCache,
+    kafka_producer: Arc<BotKafkaProducer>,
 }
 
 impl DiscordActor {
-    pub fn new(http_client: Arc<Http>, settings: SettingsCache) -> Self {
-        Self { http_client, settings }
+    pub fn new(
+        http_client: Arc<Http>,
+        settings: SettingsCache,
+        kafka_producer: Arc<BotKafkaProducer>,
+    ) -> Self {
+        Self { http_client, settings, kafka_producer }
+    }
+}
+
+fn classify_discord_error(error: &str) -> String {
+    let lower = error.to_lowercase();
+    if lower.contains("missing access") || lower.contains("missing permissions") {
+        "missing_permissions".to_string()
+    } else if lower.contains("unknown channel") {
+        "channel_not_found".to_string()
+    } else {
+        "unknown".to_string()
     }
 }
 
@@ -54,6 +71,7 @@ impl Handler<SendDetection> for DiscordActor {
 
         let http_client = self.http_client.clone();
         let settings = self.settings.clone();
+        let kafka_producer_clone = self.kafka_producer.clone();
         let text = msg.detection.message.clone();
 
         let fut = async move {
@@ -88,12 +106,48 @@ impl Handler<SendDetection> for DiscordActor {
                     .await
                 {
                     Ok(_) => tracing::info!("Sent detection to guild {} channel {}", guild.guild_id, guild.channel_id),
-                    Err(e) => tracing::error!("Failed to send to guild {} channel {}: {:?}", guild.guild_id, guild.channel_id, e),
+                    Err(e) => {
+                        let error_str = format!("{e:?}");
+                        let error_type = classify_discord_error(&error_str);
+                        tracing::error!("Failed to send to guild {} channel {}: {error_str}", guild.guild_id, guild.channel_id);
+
+                        let error_payload = crate::kafka_producer::BotErrorPayload {
+                            guild_id: guild.guild_id.clone(),
+                            channel_id: guild.channel_id.to_string(),
+                            error_type,
+                            error_message: error_str,
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                        };
+                        if let Err(ke) = kafka_producer_clone.publish_error_event(&error_payload).await {
+                            tracing::error!("Failed to publish error event: {ke}");
+                        }
+                    }
                 }
             }
         };
 
         ctx.spawn(fut.into_actor(self));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_missing_permissions() {
+        assert_eq!(classify_discord_error("Missing Access"), "missing_permissions");
+        assert_eq!(classify_discord_error("Missing Permissions"), "missing_permissions");
+    }
+
+    #[test]
+    fn classify_unknown_channel() {
+        assert_eq!(classify_discord_error("Unknown Channel"), "channel_not_found");
+    }
+
+    #[test]
+    fn classify_unknown_error() {
+        assert_eq!(classify_discord_error("some random error"), "unknown");
     }
 }

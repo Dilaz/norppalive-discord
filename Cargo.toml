@@ -10,6 +10,7 @@ dotenvy = "0.15.7"
 futures = "0.3.31"
 rdkafka = "0.37.0"
 bytes = "1"
+chrono = { version = "0.4", features = ["serde"] }
 miette = { version = "7.6.0", features = ["fancy"] }
 poise = "0.6.1"
 prost = "0.14.3"
