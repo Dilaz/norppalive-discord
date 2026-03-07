@@ -47,16 +47,16 @@ pub fn parse_snowflake(s: &str) -> Option<u64> {
     }
 }
 
-/// Build a GuildConfig from a SettingsUpdateEvent.
-pub fn config_from_event(ev: &SettingsUpdateEvent) -> Option<GuildConfig> {
+/// Build a GuildConfig from a SettingsUpdateEvent, consuming it to avoid cloning strings.
+pub fn config_from_event(ev: SettingsUpdateEvent) -> Option<GuildConfig> {
     let channel_id = parse_snowflake(&ev.channel_id)?;
     Some(GuildConfig {
-        guild_id: ev.guild_id.clone(),
+        guild_id: ev.guild_id,
         channel_id,
         role_id: ev.role_id.as_deref().and_then(parse_snowflake),
         min_confidence: ev.min_confidence,
-        active_hours_start: ev.active_hours_start.clone(),
-        active_hours_end: ev.active_hours_end.clone(),
+        active_hours_start: ev.active_hours_start,
+        active_hours_end: ev.active_hours_end,
         bot_enabled: ev.enabled,
     })
 }
@@ -113,7 +113,7 @@ mod tests {
             active_hours_end: "".into(),
             enabled: true,
         };
-        let cfg = config_from_event(&ev).unwrap();
+        let cfg = config_from_event(ev).unwrap();
         assert_eq!(cfg.channel_id, 999u64);
         assert!(cfg.role_id.is_none());
     }
@@ -129,7 +129,7 @@ mod tests {
             active_hours_end: "".into(),
             enabled: true,
         };
-        assert!(config_from_event(&ev).is_none());
+        assert!(config_from_event(ev).is_none());
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod tests {
             active_hours_end: "".into(),
             enabled: true,
         };
-        assert!(config_from_event(&ev).is_none());
+        assert!(config_from_event(ev).is_none());
     }
 
     #[test]
@@ -188,7 +188,7 @@ mod tests {
             active_hours_end: "".into(),
             enabled: true,
         };
-        let cfg = config_from_event(&ev).unwrap();
+        let cfg = config_from_event(ev).unwrap();
         assert!(cfg.role_id.is_none());
     }
 
@@ -203,7 +203,7 @@ mod tests {
             active_hours_end: "".into(),
             enabled: false,
         };
-        let cfg = config_from_event(&ev).unwrap();
+        let cfg = config_from_event(ev).unwrap();
         assert!(!cfg.bot_enabled);
     }
 
@@ -291,7 +291,7 @@ mod tests {
             active_hours_end: "22:00".into(),
             enabled: true,
         };
-        let cfg = config_from_event(&ev).unwrap();
+        let cfg = config_from_event(ev).unwrap();
         assert_eq!(cfg.guild_id, "42");
         assert_eq!(cfg.channel_id, 100u64);
         assert_eq!(cfg.role_id, Some(200u64));

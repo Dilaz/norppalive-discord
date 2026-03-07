@@ -35,14 +35,15 @@ pub async fn load_settings(backend_url: &str, cache: &SettingsCache, api_key: &s
             active_hours_end: s.active_hours_end,
             enabled: s.bot_enabled,
         };
-        match config_from_event(&ev) {
+        let ev_guild_id = ev.guild_id.clone();
+        match config_from_event(ev) {
             Some(cfg) => {
                 info!("Loaded settings for guild {}: channel={}", cfg.guild_id, cfg.channel_id);
-                map.insert(cfg.guild_id.clone(), cfg);
+                map.insert(ev_guild_id, cfg);
                 loaded_count += 1;
             }
             None => {
-                warn!("Guild {} has no valid channel_id, skipping", ev.guild_id);
+                warn!("Guild {} has no valid channel_id, skipping", ev_guild_id);
             }
         }
     }

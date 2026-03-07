@@ -8,6 +8,9 @@ use crate::kafka_producer::BotKafkaProducer;
 use crate::models::DetectionMessage;
 use crate::settings::SettingsCache;
 
+/// Maximum base64-encoded image size (10 MB decoded ≈ 13.3 MB base64)
+const MAX_IMAGE_BASE64_LEN: usize = 14 * 1024 * 1024;
+
 // Message for the DiscordActor to send a detection
 #[derive(Message, Clone)]
 #[rtype(result = "Result<(), String>")]
@@ -65,6 +68,15 @@ impl Handler<SendDetection> for DiscordActor {
     fn handle(&mut self, msg: SendDetection, ctx: &mut Context<Self>) -> Self::Result {
         tracing::debug!("DiscordActor received SendDetection: {}", msg.detection.message);
 
+        if msg.detection.image.len() > MAX_IMAGE_BASE64_LEN {
+            let err = format!(
+                "Image payload too large ({} bytes), dropping",
+                msg.detection.image.len()
+            );
+            tracing::error!("{}", err);
+            return Err(err);
+        }
+
         let image_bytes = match base64::engine::general_purpose::STANDARD.decode(&msg.detection.image) {
             Ok(b) => b,
             Err(e) => {
@@ -77,7 +89,7 @@ impl Handler<SendDetection> for DiscordActor {
         let http_client = self.http_client.clone();
         let settings = self.settings.clone();
         let kafka_producer_clone = self.kafka_producer.clone();
-        let text = msg.detection.message.clone();
+        let text = msg.detection.message;
 
         let fut = async move {
             let guilds: Vec<_> = {
