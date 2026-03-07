@@ -13,8 +13,8 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     libssl3 zlib1g ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd -r -s /bin/false nonroot
+    && useradd -r -u 65532 -s /bin/false nonroot
 WORKDIR /usr/local/bin
 COPY --from=builder /usr/src/app/target/release/norppalive-discord .
-USER nonroot
+USER 65532
 ENTRYPOINT ["/usr/local/bin/norppalive-discord"]
