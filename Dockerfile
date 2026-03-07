@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
 COPY Cargo.toml Cargo.lock ./
 COPY proto/ ./proto/
 COPY src/ ./src/
+COPY assets/ ./assets/
 COPY build.rs ./
 RUN cargo build --release
 
