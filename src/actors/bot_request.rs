@@ -1,11 +1,11 @@
 use actix::prelude::*;
-use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serenity::all::{ChannelId, CreateAttachment, Http, MessageFlags};
 use std::sync::Arc;
-use serde_json::json;
 
 use crate::kafka_producer::BotKafkaProducer;
 use crate::settings::SettingsCache;
@@ -107,7 +107,9 @@ impl Handler<StartListening> for BotRequestActor {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::error!("Failed to create bot-request consumer: {e}. Retrying in 5s...");
+                    tracing::error!(
+                        "Failed to create bot-request consumer: {e}. Retrying in 5s..."
+                    );
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     addr.do_send(StartListening);
                     return;
@@ -128,13 +130,17 @@ impl Handler<StartListening> for BotRequestActor {
                     Ok(m) => {
                         if let Some(Ok(payload)) = m.payload_view::<str>() {
                             match serde_json::from_str::<BotRequest>(payload) {
-                                Ok(BotRequest::IsInGuild { guild_id, correlation_id }) => {
+                                Ok(BotRequest::IsInGuild {
+                                    guild_id,
+                                    correlation_id,
+                                }) => {
                                     handle_is_in_guild(
                                         &http_client,
                                         &kafka_producer,
                                         &guild_id,
                                         &correlation_id,
-                                    ).await;
+                                    )
+                                    .await;
                                 }
                                 Ok(BotRequest::SendTestMessage {
                                     guild_id,
@@ -152,7 +158,8 @@ impl Handler<StartListening> for BotRequestActor {
                                         &role_id,
                                         ping_role,
                                         &correlation_id,
-                                    ).await;
+                                    )
+                                    .await;
                                 }
                                 Err(e) => {
                                     tracing::warn!("Failed to parse bot request: {e} | {payload}");
@@ -178,10 +185,10 @@ async fn handle_is_in_guild(
     let present = match guild_id.parse::<u64>() {
         Ok(id) => {
             // Try to get guild info via bot — if it succeeds, bot is in the guild
-            match http_client.get_guild(serenity::all::GuildId::from(id)).await {
-                Ok(_) => true,
-                Err(_) => false,
-            }
+            http_client
+                .get_guild(serenity::all::GuildId::from(id))
+                .await
+                .is_ok()
         }
         Err(_) => false,
     };
@@ -202,6 +209,7 @@ async fn handle_is_in_guild(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_send_test_message(
     http_client: &Http,
     _settings: &SettingsCache,
@@ -289,7 +297,11 @@ mod tests {
     fn bot_request_is_in_guild_deserializes() {
         let json = r#"{"type":"is_in_guild","guild_id":"123","correlation_id":"abc"}"#;
         let req: BotRequest = serde_json::from_str(json).unwrap();
-        if let BotRequest::IsInGuild { guild_id, correlation_id } = req {
+        if let BotRequest::IsInGuild {
+            guild_id,
+            correlation_id,
+        } = req
+        {
             assert_eq!(guild_id, "123");
             assert_eq!(correlation_id, "abc");
         } else {

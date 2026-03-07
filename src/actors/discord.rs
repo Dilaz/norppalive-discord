@@ -1,8 +1,8 @@
 use actix::prelude::*;
-use serenity::all::{ChannelId, CreateAttachment, Http, MessageFlags};
-use std::sync::Arc;
 use base64::Engine;
 use serde_json::json;
+use serenity::all::{ChannelId, CreateAttachment, Http, MessageFlags};
+use std::sync::Arc;
 
 use crate::kafka_producer::BotKafkaProducer;
 use crate::models::DetectionMessage;
@@ -30,7 +30,11 @@ impl DiscordActor {
         settings: SettingsCache,
         kafka_producer: Arc<BotKafkaProducer>,
     ) -> Self {
-        Self { http_client, settings, kafka_producer }
+        Self {
+            http_client,
+            settings,
+            kafka_producer,
+        }
     }
 }
 
@@ -66,7 +70,10 @@ impl Handler<SendDetection> for DiscordActor {
     type Result = Result<(), String>;
 
     fn handle(&mut self, msg: SendDetection, ctx: &mut Context<Self>) -> Self::Result {
-        tracing::debug!("DiscordActor received SendDetection: {}", msg.detection.message);
+        tracing::debug!(
+            "DiscordActor received SendDetection: {}",
+            msg.detection.message
+        );
 
         if msg.detection.image.len() > MAX_IMAGE_BASE64_LEN {
             let err = format!(
@@ -77,14 +84,15 @@ impl Handler<SendDetection> for DiscordActor {
             return Err(err);
         }
 
-        let image_bytes = match base64::engine::general_purpose::STANDARD.decode(&msg.detection.image) {
-            Ok(b) => b,
-            Err(e) => {
-                let err = format!("Failed to decode image: {e}");
-                tracing::error!("{}", err);
-                return Err(err);
-            }
-        };
+        let image_bytes =
+            match base64::engine::general_purpose::STANDARD.decode(&msg.detection.image) {
+                Ok(b) => b,
+                Err(e) => {
+                    let err = format!("Failed to decode image: {e}");
+                    tracing::error!("{}", err);
+                    return Err(err);
+                }
+            };
 
         let http_client = self.http_client.clone();
         let settings = self.settings.clone();
@@ -94,11 +102,7 @@ impl Handler<SendDetection> for DiscordActor {
         let fut = async move {
             let guilds: Vec<_> = {
                 let map = settings.read().await;
-                map.values()
-                    // TODO: also enforce min_confidence threshold and active_hours_start/end time window
-                    .filter(|g| g.bot_enabled)
-                    .cloned()
-                    .collect()
+                map.values().filter(|g| g.bot_enabled).cloned().collect()
             };
 
             if guilds.is_empty() {
@@ -119,14 +123,26 @@ impl Handler<SendDetection> for DiscordActor {
                 });
 
                 match http_client
-                    .send_message(ChannelId::from(guild.channel_id), vec![attachment], &payload)
+                    .send_message(
+                        ChannelId::from(guild.channel_id),
+                        vec![attachment],
+                        &payload,
+                    )
                     .await
                 {
-                    Ok(_) => tracing::info!("Sent detection to guild {} channel {}", guild.guild_id, guild.channel_id),
+                    Ok(_) => tracing::info!(
+                        "Sent detection to guild {} channel {}",
+                        guild.guild_id,
+                        guild.channel_id
+                    ),
                     Err(e) => {
                         let error_type = classify_discord_error(&e);
                         let error_str = format!("{e:?}");
-                        tracing::error!("Failed to send to guild {} channel {}: {error_str}", guild.guild_id, guild.channel_id);
+                        tracing::error!(
+                            "Failed to send to guild {} channel {}: {error_str}",
+                            guild.guild_id,
+                            guild.channel_id
+                        );
 
                         let error_payload = crate::kafka_producer::BotErrorPayload {
                             guild_id: guild.guild_id.clone(),
@@ -135,7 +151,10 @@ impl Handler<SendDetection> for DiscordActor {
                             error_message: error_str,
                             timestamp: chrono::Utc::now().to_rfc3339(),
                         };
-                        if let Err(ke) = kafka_producer_clone.publish_error_event(&error_payload).await {
+                        if let Err(ke) = kafka_producer_clone
+                            .publish_error_event(&error_payload)
+                            .await
+                        {
                             tracing::error!("Failed to publish error event: {ke}");
                         }
                     }

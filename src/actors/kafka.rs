@@ -1,10 +1,10 @@
-use actix::prelude::*;
-use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::config::ClientConfig;
-use rdkafka::message::Message;
-use std::time::Duration;
 use crate::actors::discord::{DiscordActor, SendDetection};
 use crate::models::DetectionMessage;
+use actix::prelude::*;
+use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::message::Message;
+use std::time::Duration;
 
 #[derive(Message)]
 #[rtype(result = "()")]
@@ -18,7 +18,11 @@ pub struct KafkaRdkafkaActor {
 
 impl KafkaRdkafkaActor {
     pub fn new(broker_addr: String, topic: String, discord_actor_addr: Addr<DiscordActor>) -> Self {
-        Self { broker_addr, topic, discord_actor_addr }
+        Self {
+            broker_addr,
+            topic,
+            discord_actor_addr,
+        }
     }
 
     fn process_message(discord_addr: Addr<DiscordActor>, payload: &str) {
@@ -28,7 +32,11 @@ impl KafkaRdkafkaActor {
                 discord_addr.do_send(SendDetection { detection });
             }
             Err(e) => {
-                tracing::warn!("Failed to parse Kafka message as DetectionMessage: {} | error: {}", payload, e);
+                tracing::warn!(
+                    "Failed to parse Kafka message as DetectionMessage: {} | error: {}",
+                    payload,
+                    e
+                );
             }
         }
     }
@@ -55,7 +63,8 @@ impl Handler<PollKafka> for KafkaRdkafkaActor {
                 .set("bootstrap.servers", &broker)
                 .set("group.id", "norppalive-discord-group")
                 .set("auto.offset.reset", "earliest")
-                .create() {
+                .create()
+            {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::error!("Failed to create Kafka consumer: {}", e);
@@ -70,19 +79,17 @@ impl Handler<PollKafka> for KafkaRdkafkaActor {
 
             loop {
                 match consumer.recv().await {
-                    Ok(m) => {
-                        match m.payload_view::<str>() {
-                            Some(Ok(payload)) => {
-                                KafkaRdkafkaActor::process_message(discord_addr.clone(), payload);
-                            }
-                            Some(Err(e)) => {
-                                tracing::warn!("Invalid UTF-8 in Kafka message: {:?}", e);
-                            }
-                            None => {
-                                tracing::debug!("Received Kafka message with empty payload");
-                            }
+                    Ok(m) => match m.payload_view::<str>() {
+                        Some(Ok(payload)) => {
+                            KafkaRdkafkaActor::process_message(discord_addr.clone(), payload);
                         }
-                    }
+                        Some(Err(e)) => {
+                            tracing::warn!("Invalid UTF-8 in Kafka message: {:?}", e);
+                        }
+                        None => {
+                            tracing::debug!("Received Kafka message with empty payload");
+                        }
+                    },
                     Err(e) => {
                         tracing::error!("Kafka error: {:?}", e);
                         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -92,4 +99,4 @@ impl Handler<PollKafka> for KafkaRdkafkaActor {
         });
         // No need to schedule another poll, the spawned task runs forever
     }
-} 
+}

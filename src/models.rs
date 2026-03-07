@@ -90,4 +90,4 @@ mod tests {
         let parsed: DetectionMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.image.len(), 1_000_000);
     }
-} 
+}

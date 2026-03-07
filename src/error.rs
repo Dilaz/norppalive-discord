@@ -85,15 +85,23 @@ mod tests {
         assert_eq!(io_err.code().unwrap().to_string(), "norppalive::io_error");
 
         let config_err = NorppaliveError::Config("x".into());
-        assert_eq!(config_err.code().unwrap().to_string(), "norppalive::config_error");
+        assert_eq!(
+            config_err.code().unwrap().to_string(),
+            "norppalive::config_error"
+        );
 
         let b64_err = NorppaliveError::Base64(
-            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, "!!!")
-                .unwrap_err(),
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, "!!!").unwrap_err(),
         );
-        assert_eq!(b64_err.code().unwrap().to_string(), "norppalive::base64_error");
+        assert_eq!(
+            b64_err.code().unwrap().to_string(),
+            "norppalive::base64_error"
+        );
 
         let json_err = NorppaliveError::Json(serde_json::from_str::<()>("x").unwrap_err());
-        assert_eq!(json_err.code().unwrap().to_string(), "norppalive::json_error");
+        assert_eq!(
+            json_err.code().unwrap().to_string(),
+            "norppalive::json_error"
+        );
     }
 }

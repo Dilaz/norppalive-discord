@@ -1,6 +1,6 @@
 use actix::prelude::*;
-use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::config::ClientConfig;
+use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Message;
 
 use crate::settings::{config_from_event, SettingsCache, SettingsUpdateEvent};
@@ -17,7 +17,11 @@ pub struct SettingsConsumerActor {
 
 impl SettingsConsumerActor {
     pub fn new(broker_addr: String, topic: String, cache: SettingsCache) -> Self {
-        Self { broker_addr, topic, cache }
+        Self {
+            broker_addr,
+            topic,
+            cache,
+        }
     }
 }
 
@@ -52,7 +56,9 @@ impl Handler<StartConsuming> for SettingsConsumerActor {
             {
                 Ok(c) => c,
                 Err(e) => {
-                    tracing::error!("Failed to create settings Kafka consumer: {e}. Retrying in 5s...");
+                    tracing::error!(
+                        "Failed to create settings Kafka consumer: {e}. Retrying in 5s..."
+                    );
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     addr.do_send(StartConsuming);
                     return;
@@ -60,7 +66,9 @@ impl Handler<StartConsuming> for SettingsConsumerActor {
             };
 
             if let Err(e) = consumer.subscribe(&[&topic]) {
-                tracing::error!("Failed to subscribe to settings topic {topic}: {e}. Retrying in 5s...");
+                tracing::error!(
+                    "Failed to subscribe to settings topic {topic}: {e}. Retrying in 5s..."
+                );
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 addr.do_send(StartConsuming);
                 return;
@@ -95,7 +103,9 @@ impl Handler<StartConsuming> for SettingsConsumerActor {
                                     }
                                 }
                                 Err(e) => {
-                                    tracing::warn!("Failed to parse settings update: {e} | payload: {payload}");
+                                    tracing::warn!(
+                                        "Failed to parse settings update: {e} | payload: {payload}"
+                                    );
                                 }
                             }
                         }

@@ -1,6 +1,6 @@
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde::Deserialize;
 use tokio::sync::RwLock;
 
 /// Per-guild configuration loaded from the backend.
@@ -9,11 +9,6 @@ pub struct GuildConfig {
     pub guild_id: String,
     pub channel_id: u64,
     pub role_id: Option<u64>,
-    pub min_confidence: f64,
-    /// HH:MM in 24-hour UTC, e.g. "08:00". Empty string means no restriction.
-    pub active_hours_start: String,
-    /// HH:MM in 24-hour UTC, e.g. "22:00". Empty string means no restriction.
-    pub active_hours_end: String,
     pub bot_enabled: bool,
 }
 
@@ -31,11 +26,6 @@ pub struct SettingsUpdateEvent {
     pub channel_id: String,
     #[serde(default)]
     pub role_id: Option<String>,
-    pub min_confidence: f64,
-    /// HH:MM in 24-hour UTC, e.g. "08:00". Empty string means no restriction.
-    pub active_hours_start: String,
-    /// HH:MM in 24-hour UTC, e.g. "22:00". Empty string means no restriction.
-    pub active_hours_end: String,
     pub enabled: bool,
 }
 
@@ -54,9 +44,6 @@ pub fn config_from_event(ev: SettingsUpdateEvent) -> Option<GuildConfig> {
         guild_id: ev.guild_id,
         channel_id,
         role_id: ev.role_id.as_deref().and_then(parse_snowflake),
-        min_confidence: ev.min_confidence,
-        active_hours_start: ev.active_hours_start,
-        active_hours_end: ev.active_hours_end,
         bot_enabled: ev.enabled,
     })
 }
@@ -67,7 +54,10 @@ mod tests {
 
     #[test]
     fn parse_snowflake_valid() {
-        assert_eq!(parse_snowflake("123456789012345678"), Some(123456789012345678u64));
+        assert_eq!(
+            parse_snowflake("123456789012345678"),
+            Some(123456789012345678u64)
+        );
     }
 
     #[test]
@@ -91,14 +81,10 @@ mod tests {
             "guild_id": "111",
             "channel_id": "222",
             "role_id": "333",
-            "min_confidence": 0.75,
-            "active_hours_start": "08:00",
-            "active_hours_end": "22:00",
             "enabled": true
         }"#;
         let ev: SettingsUpdateEvent = serde_json::from_str(json).unwrap();
         assert_eq!(ev.guild_id, "111");
-        assert_eq!(ev.min_confidence, 0.75);
         assert!(ev.enabled);
     }
 
@@ -108,9 +94,6 @@ mod tests {
             guild_id: "1".into(),
             channel_id: "999".into(),
             role_id: None,
-            min_confidence: 0.5f64,
-            active_hours_start: "".into(),
-            active_hours_end: "".into(),
             enabled: true,
         };
         let cfg = config_from_event(ev).unwrap();
@@ -124,9 +107,6 @@ mod tests {
             guild_id: "1".into(),
             channel_id: "".into(), // missing channel → skip guild
             role_id: None,
-            min_confidence: 0.5,
-            active_hours_start: "".into(),
-            active_hours_end: "".into(),
             enabled: true,
         };
         assert!(config_from_event(ev).is_none());
@@ -169,9 +149,6 @@ mod tests {
             guild_id: "1".into(),
             channel_id: "0".into(),
             role_id: None,
-            min_confidence: 0.5,
-            active_hours_start: "".into(),
-            active_hours_end: "".into(),
             enabled: true,
         };
         assert!(config_from_event(ev).is_none());
@@ -183,9 +160,6 @@ mod tests {
             guild_id: "1".into(),
             channel_id: "999".into(),
             role_id: Some("0".into()),
-            min_confidence: 0.5,
-            active_hours_start: "".into(),
-            active_hours_end: "".into(),
             enabled: true,
         };
         let cfg = config_from_event(ev).unwrap();
@@ -198,9 +172,6 @@ mod tests {
             guild_id: "1".into(),
             channel_id: "100".into(),
             role_id: None,
-            min_confidence: 0.0,
-            active_hours_start: "".into(),
-            active_hours_end: "".into(),
             enabled: false,
         };
         let cfg = config_from_event(ev).unwrap();
@@ -212,9 +183,6 @@ mod tests {
         let json = r#"{
             "guild_id": "1",
             "channel_id": "2",
-            "min_confidence": 0.5,
-            "active_hours_start": "",
-            "active_hours_end": "",
             "enabled": true
         }"#;
         let ev: SettingsUpdateEvent = serde_json::from_str(json).unwrap();
@@ -227,9 +195,6 @@ mod tests {
             "guild_id": "1",
             "channel_id": "2",
             "role_id": null,
-            "min_confidence": 0.5,
-            "active_hours_start": "",
-            "active_hours_end": "",
             "enabled": true
         }"#;
         let ev: SettingsUpdateEvent = serde_json::from_str(json).unwrap();
@@ -241,15 +206,15 @@ mod tests {
         let cache = new_cache();
         {
             let mut map = cache.write().await;
-            map.insert("guild1".into(), GuildConfig {
-                guild_id: "guild1".into(),
-                channel_id: 100,
-                role_id: None,
-                min_confidence: 0.5,
-                active_hours_start: "".into(),
-                active_hours_end: "".into(),
-                bot_enabled: true,
-            });
+            map.insert(
+                "guild1".into(),
+                GuildConfig {
+                    guild_id: "guild1".into(),
+                    channel_id: 100,
+                    role_id: None,
+                    bot_enabled: true,
+                },
+            );
         }
         let map = cache.read().await;
         assert_eq!(map.len(), 1);
@@ -263,9 +228,6 @@ mod tests {
             guild_id: "g".into(),
             channel_id: 1,
             role_id: None,
-            min_confidence: 0.0,
-            active_hours_start: "".into(),
-            active_hours_end: "".into(),
             bot_enabled: true,
         };
         {
@@ -286,17 +248,12 @@ mod tests {
             guild_id: "42".into(),
             channel_id: "100".into(),
             role_id: Some("200".into()),
-            min_confidence: 0.85,
-            active_hours_start: "08:00".into(),
-            active_hours_end: "22:00".into(),
             enabled: true,
         };
         let cfg = config_from_event(ev).unwrap();
         assert_eq!(cfg.guild_id, "42");
         assert_eq!(cfg.channel_id, 100u64);
         assert_eq!(cfg.role_id, Some(200u64));
-        assert_eq!(cfg.min_confidence, 0.85);
-        assert_eq!(cfg.active_hours_start, "08:00");
         assert!(cfg.bot_enabled);
     }
 }
