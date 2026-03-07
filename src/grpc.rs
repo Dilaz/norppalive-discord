@@ -7,12 +7,17 @@ use crate::settings::{config_from_event, SettingsCache, SettingsUpdateEvent};
 
 /// Connect to the backend and populate the settings cache with all guild configs.
 /// Guilds with no valid channel_id are skipped with a warning.
-pub async fn load_settings(backend_url: &str, cache: &SettingsCache) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn load_settings(backend_url: &str, cache: &SettingsCache, api_key: &str) -> Result<(), Box<dyn std::error::Error>> {
     info!("Connecting to backend at {} to fetch guild settings...", backend_url);
     let mut client = BotServiceClient::connect(backend_url.to_string()).await?;
-    let resp = client
-        .get_all_guild_settings(GetAllGuildSettingsRequest {})
-        .await?;
+
+    let mut request = tonic::Request::new(GetAllGuildSettingsRequest {});
+    request.metadata_mut().insert(
+        "x-bot-api-key",
+        tonic::metadata::MetadataValue::try_from(api_key)?,
+    );
+
+    let resp = client.get_all_guild_settings(request).await?;
 
     let mut map = cache.write().await;
     let mut loaded_count: usize = 0;
