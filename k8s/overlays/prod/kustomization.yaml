@@ -10,7 +10,7 @@ resources:
 images:
   - name: norppalive-discord
     newName: ghcr.io/dilaz/norppalive-discord
-    newTag: sha-d27ac966eb390add68c19a3e0b0100b59431c315
+    newTag: sha-6415ba348ebd67b81e8970e56380d0e746a74d37
 
 patches:
   - path: deployment-patch.yaml
