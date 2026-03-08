@@ -10,6 +10,9 @@ pub struct GuildConfig {
     pub channel_id: u64,
     pub role_id: Option<u64>,
     pub bot_enabled: bool,
+    pub rock_detection_enabled: bool,
+    pub rock_channel_id: Option<u64>,
+    pub rock_role_id: Option<u64>,
 }
 
 /// Shared, async-safe settings map.
@@ -27,6 +30,12 @@ pub struct SettingsUpdateEvent {
     #[serde(default)]
     pub role_id: Option<String>,
     pub enabled: bool,
+    #[serde(default)]
+    pub rock_detection_enabled: Option<bool>,
+    #[serde(default)]
+    pub rock_channel_id: Option<String>,
+    #[serde(default)]
+    pub rock_role_id: Option<String>,
 }
 
 /// Parse a channel or role snowflake string. Returns None if empty, zero, or invalid.
@@ -45,6 +54,9 @@ pub fn config_from_event(ev: SettingsUpdateEvent) -> Option<GuildConfig> {
         channel_id,
         role_id: ev.role_id.as_deref().and_then(parse_snowflake),
         bot_enabled: ev.enabled,
+        rock_detection_enabled: ev.rock_detection_enabled.unwrap_or(false),
+        rock_channel_id: ev.rock_channel_id.as_deref().and_then(parse_snowflake),
+        rock_role_id: ev.rock_role_id.as_deref().and_then(parse_snowflake),
     })
 }
 
@@ -95,6 +107,9 @@ mod tests {
             channel_id: "999".into(),
             role_id: None,
             enabled: true,
+            rock_detection_enabled: None,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         let cfg = config_from_event(ev).unwrap();
         assert_eq!(cfg.channel_id, 999u64);
@@ -108,6 +123,9 @@ mod tests {
             channel_id: "".into(), // missing channel → skip guild
             role_id: None,
             enabled: true,
+            rock_detection_enabled: None,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         assert!(config_from_event(ev).is_none());
     }
@@ -150,6 +168,9 @@ mod tests {
             channel_id: "0".into(),
             role_id: None,
             enabled: true,
+            rock_detection_enabled: None,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         assert!(config_from_event(ev).is_none());
     }
@@ -161,6 +182,9 @@ mod tests {
             channel_id: "999".into(),
             role_id: Some("0".into()),
             enabled: true,
+            rock_detection_enabled: None,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         let cfg = config_from_event(ev).unwrap();
         assert!(cfg.role_id.is_none());
@@ -173,6 +197,9 @@ mod tests {
             channel_id: "100".into(),
             role_id: None,
             enabled: false,
+            rock_detection_enabled: None,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         let cfg = config_from_event(ev).unwrap();
         assert!(!cfg.bot_enabled);
@@ -213,6 +240,9 @@ mod tests {
                     channel_id: 100,
                     role_id: None,
                     bot_enabled: true,
+                    rock_detection_enabled: false,
+                    rock_channel_id: None,
+                    rock_role_id: None,
                 },
             );
         }
@@ -229,6 +259,9 @@ mod tests {
             channel_id: 1,
             role_id: None,
             bot_enabled: true,
+            rock_detection_enabled: false,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         {
             let mut map = cache.write().await;
@@ -249,11 +282,31 @@ mod tests {
             channel_id: "100".into(),
             role_id: Some("200".into()),
             enabled: true,
+            rock_detection_enabled: None,
+            rock_channel_id: None,
+            rock_role_id: None,
         };
         let cfg = config_from_event(ev).unwrap();
         assert_eq!(cfg.guild_id, "42");
         assert_eq!(cfg.channel_id, 100u64);
         assert_eq!(cfg.role_id, Some(200u64));
         assert!(cfg.bot_enabled);
+    }
+
+    #[test]
+    fn config_from_event_with_rock_detection() {
+        let ev = SettingsUpdateEvent {
+            guild_id: "42".into(),
+            channel_id: "100".into(),
+            role_id: Some("200".into()),
+            enabled: true,
+            rock_detection_enabled: Some(true),
+            rock_channel_id: Some("300".into()),
+            rock_role_id: Some("400".into()),
+        };
+        let cfg = config_from_event(ev).unwrap();
+        assert!(cfg.rock_detection_enabled);
+        assert_eq!(cfg.rock_channel_id, Some(300u64));
+        assert_eq!(cfg.rock_role_id, Some(400u64));
     }
 }

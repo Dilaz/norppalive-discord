@@ -98,6 +98,7 @@ impl Handler<SendDetection> for DiscordActor {
         let settings = self.settings.clone();
         let kafka_producer_clone = self.kafka_producer.clone();
         let text = msg.detection.message;
+        let text_detection_type = msg.detection.detection_type;
 
         let fut = async move {
             let guilds: Vec<_> = {
@@ -110,9 +111,24 @@ impl Handler<SendDetection> for DiscordActor {
                 return;
             }
 
+            let is_rock = text_detection_type.as_deref() == Some("rock");
+
             for guild in guilds {
+                // Determine target channel and role based on detection type
+                let (target_channel, target_role) = if is_rock {
+                    if !guild.rock_detection_enabled {
+                        continue;
+                    }
+                    match guild.rock_channel_id {
+                        Some(ch) => (ch, guild.rock_role_id),
+                        None => continue,
+                    }
+                } else {
+                    (guild.channel_id, guild.role_id)
+                };
+
                 let mut content = text.clone();
-                if let Some(role_id) = guild.role_id {
+                if let Some(role_id) = target_role {
                     content.push_str(&format!("\n\n<@&{role_id}>"));
                 }
 
@@ -123,17 +139,14 @@ impl Handler<SendDetection> for DiscordActor {
                 });
 
                 match http_client
-                    .send_message(
-                        ChannelId::from(guild.channel_id),
-                        vec![attachment],
-                        &payload,
-                    )
+                    .send_message(ChannelId::from(target_channel), vec![attachment], &payload)
                     .await
                 {
                     Ok(_) => tracing::info!(
-                        "Sent detection to guild {} channel {}",
+                        "Sent detection to guild {} channel {} (type: {})",
                         guild.guild_id,
-                        guild.channel_id
+                        target_channel,
+                        if is_rock { "rock" } else { "seal" }
                     ),
                     Err(e) => {
                         let error_type = classify_discord_error(&e);
@@ -141,12 +154,12 @@ impl Handler<SendDetection> for DiscordActor {
                         tracing::error!(
                             "Failed to send to guild {} channel {}: {error_str}",
                             guild.guild_id,
-                            guild.channel_id
+                            target_channel
                         );
 
                         let error_payload = crate::kafka_producer::BotErrorPayload {
                             guild_id: guild.guild_id.clone(),
-                            channel_id: guild.channel_id.to_string(),
+                            channel_id: target_channel.to_string(),
                             error_type,
                             error_message: error_str,
                             timestamp: chrono::Utc::now().to_rfc3339(),

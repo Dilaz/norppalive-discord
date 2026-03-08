@@ -39,6 +39,17 @@ pub async fn load_settings(
                 Some(s.role_id)
             },
             enabled: s.bot_enabled,
+            rock_detection_enabled: Some(s.rock_detection_enabled),
+            rock_channel_id: if s.rock_channel_id.is_empty() {
+                None
+            } else {
+                Some(s.rock_channel_id)
+            },
+            rock_role_id: if s.rock_role_id.is_empty() {
+                None
+            } else {
+                Some(s.rock_role_id)
+            },
         };
         let ev_guild_id = ev.guild_id.clone();
         match config_from_event(ev) {

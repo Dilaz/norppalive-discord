@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct DetectionMessage {
     pub image: String,
     pub message: String,
+    #[serde(default)]
+    pub detection_type: Option<String>,
 }
 
 #[cfg(test)]
@@ -15,6 +17,7 @@ mod tests {
         let msg = DetectionMessage {
             image: "base64data".into(),
             message: "Seal detected!".into(),
+            detection_type: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: DetectionMessage = serde_json::from_str(&json).unwrap();
@@ -35,6 +38,7 @@ mod tests {
         let msg = DetectionMessage {
             image: "".into(),
             message: "".into(),
+            detection_type: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: DetectionMessage = serde_json::from_str(&json).unwrap();
@@ -47,6 +51,7 @@ mod tests {
         let msg = DetectionMessage {
             image: "img".into(),
             message: "msg".into(),
+            detection_type: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -73,6 +78,7 @@ mod tests {
         let msg = DetectionMessage {
             image: "data".into(),
             message: "text".into(),
+            detection_type: None,
         };
         let cloned = msg.clone();
         assert_eq!(cloned.image, msg.image);
@@ -85,9 +91,24 @@ mod tests {
         let msg = DetectionMessage {
             image: large_image.clone(),
             message: "test".into(),
+            detection_type: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: DetectionMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.image.len(), 1_000_000);
+    }
+
+    #[test]
+    fn detection_message_with_detection_type() {
+        let json = r#"{"image":"abc","message":"hello","detection_type":"rock"}"#;
+        let msg: DetectionMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg.detection_type, Some("rock".to_string()));
+    }
+
+    #[test]
+    fn detection_message_without_detection_type_defaults_to_none() {
+        let json = r#"{"image":"abc","message":"hello"}"#;
+        let msg: DetectionMessage = serde_json::from_str(json).unwrap();
+        assert!(msg.detection_type.is_none());
     }
 }

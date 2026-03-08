@@ -15,6 +15,9 @@ message GuildSettings {
   string active_hours_start = 5;
   string active_hours_end = 6;
   bool bot_enabled = 7;
+  bool rock_detection_enabled = 8;
+  string rock_channel_id = 9;
+  string rock_role_id = 10;
 }
 
 message GetSettingsRequest {
