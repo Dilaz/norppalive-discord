@@ -13,6 +13,8 @@ use super::rate_limit::{RateLimitError, RateLimiter};
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_IMAGE_DIM: u32 = 4096;
+const MAX_DETECT_WIDTH: u32 = 1280;
+const MAX_DETECT_HEIGHT: u32 = 720;
 const SUPPORTED_MIMES: &[&str] = &["image/jpeg", "image/png", "image/webp", "image/bmp"];
 
 pub const SLASH_COMMAND_NAME: &str = "norpantunnistus";
@@ -92,13 +94,23 @@ pub async fn handle(ctx: Context, cmd: CommandInteraction, deps: Arc<CommandDeps
         }
     }
 
-    // 7. Call detection API with low priority.
+    // 7. Downscale to <=1280x720 — keeps detection fast and the annotated
+    //    followup small enough not to blow Discord's upload limit.
+    let (bytes, detect_mime) = match downscale_for_detect(bytes, &source.mime) {
+        Ok(b) => b,
+        Err(_) => {
+            followup_ephemeral(&ctx, &cmd, "Kuvan käsittely epäonnistui.").await;
+            return;
+        }
+    };
+
+    // 8. Call detection API with low priority.
     let detections = match detect_client::detect_low_priority(
         &deps.http_client,
         &deps.detect_url,
         bytes.clone(),
         "image.bin",
-        source.mime.as_str(),
+        detect_mime.as_str(),
     )
     .await
     {
@@ -109,10 +121,10 @@ pub async fn handle(ctx: Context, cmd: CommandInteraction, deps: Arc<CommandDeps
         }
     };
 
-    // 8. Successful API call — burn one quota slot.
+    // 9. Successful API call — burn one quota slot.
     deps.rate_limiter.record(cmd.user.id);
 
-    // 9. Reply.
+    // 10. Reply.
     if detections.is_empty() {
         followup_ephemeral(&ctx, &cmd, "Ei norppia havaittu.").await;
         return;
@@ -315,6 +327,33 @@ fn peek_dimensions(bytes: &[u8]) -> Result<(u32, u32), PeekError> {
     Ok((w, h))
 }
 
+fn downscale_for_detect(bytes: Vec<u8>, mime: &str) -> Result<(Vec<u8>, String), PeekError> {
+    let reader = ImageReader::new(Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(|_| PeekError::Unsupported)?;
+    let img = reader.decode().map_err(|_| PeekError::Decode)?;
+    if img.width() <= MAX_DETECT_WIDTH && img.height() <= MAX_DETECT_HEIGHT {
+        return Ok((bytes, mime.to_string()));
+    }
+    let scaled = img.resize(
+        MAX_DETECT_WIDTH,
+        MAX_DETECT_HEIGHT,
+        image::imageops::FilterType::Lanczos3,
+    );
+    tracing::debug!(
+        "downscaled image {}x{} -> {}x{}",
+        img.width(),
+        img.height(),
+        scaled.width(),
+        scaled.height()
+    );
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    scaled
+        .write_to(&mut Cursor::new(&mut out), image::ImageFormat::Jpeg)
+        .map_err(|_| PeekError::Decode)?;
+    Ok((out, "image/jpeg".to_string()))
+}
+
 fn format_rate_limit(e: &RateLimitError, daily_max: u32) -> String {
     match e {
         RateLimitError::Cooldown { retry_in } => {
@@ -423,5 +462,71 @@ mod tests {
         let msg = format_rate_limit(&RateLimitError::DailyQuota, 20);
         assert!(msg.contains("20"));
         assert!(msg.contains("Päivittäinen"));
+    }
+
+    #[test]
+    fn downscale_passes_through_already_small_image() {
+        let img = image::DynamicImage::new_rgb8(640, 480);
+        let mut bytes = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        let original = bytes.clone();
+        let (out, mime) = downscale_for_detect(bytes, "image/png").unwrap();
+        assert_eq!(out, original);
+        assert_eq!(mime, "image/png");
+    }
+
+    #[test]
+    fn downscale_passes_through_image_at_exact_bounds() {
+        let img = image::DynamicImage::new_rgb8(MAX_DETECT_WIDTH, MAX_DETECT_HEIGHT);
+        let mut bytes = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .unwrap();
+        let original = bytes.clone();
+        let (out, _mime) = downscale_for_detect(bytes, "image/jpeg").unwrap();
+        assert_eq!(out, original);
+    }
+
+    #[test]
+    fn downscale_resizes_oversized_landscape() {
+        let img = image::DynamicImage::new_rgb8(2560, 1440);
+        let mut bytes = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .unwrap();
+        let (out, mime) = downscale_for_detect(bytes, "image/jpeg").unwrap();
+        let (w, h) = ImageReader::new(Cursor::new(&out))
+            .with_guessed_format()
+            .unwrap()
+            .into_dimensions()
+            .unwrap();
+        assert!(w <= MAX_DETECT_WIDTH && h <= MAX_DETECT_HEIGHT);
+        assert_eq!((w, h), (1280, 720));
+        assert_eq!(mime, "image/jpeg");
+    }
+
+    #[test]
+    fn downscale_resizes_oversized_portrait() {
+        let img = image::DynamicImage::new_rgb8(1080, 1920);
+        let mut bytes = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Jpeg)
+            .unwrap();
+        let (out, _mime) = downscale_for_detect(bytes, "image/jpeg").unwrap();
+        let (w, h) = ImageReader::new(Cursor::new(&out))
+            .with_guessed_format()
+            .unwrap()
+            .into_dimensions()
+            .unwrap();
+        assert!(w <= MAX_DETECT_WIDTH && h <= MAX_DETECT_HEIGHT);
+        assert_eq!(h, 720);
+    }
+
+    #[test]
+    fn downscale_re_encodes_png_to_jpeg() {
+        let img = image::DynamicImage::new_rgb8(2000, 2000);
+        let mut bytes = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::Png)
+            .unwrap();
+        let (_out, mime) = downscale_for_detect(bytes, "image/png").unwrap();
+        assert_eq!(mime, "image/jpeg");
     }
 }
