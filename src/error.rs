@@ -81,7 +81,7 @@ mod tests {
     fn diagnostic_codes() {
         use miette::Diagnostic;
 
-        let io_err = NorppaliveError::Io(std::io::Error::new(std::io::ErrorKind::Other, "x"));
+        let io_err = NorppaliveError::Io(std::io::Error::other("x"));
         assert_eq!(io_err.code().unwrap().to_string(), "norppalive::io_error");
 
         let config_err = NorppaliveError::Config("x".into());
