@@ -25,6 +25,8 @@ spec:
               value: redpanda:9092
             - name: KAFKA_TOPIC
               value: detection
+            - name: KAFKA_ROCKS_TOPIC
+              value: rocks
             - name: KAFKA_SETTINGS_TOPIC
               value: guild-settings-update
             - name: BACKEND_GRPC_URL

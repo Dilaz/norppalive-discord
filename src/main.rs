@@ -183,6 +183,7 @@ async fn main() -> Result<(), NorppaliveError> {
     let discord_token = var("DISCORD_TOKEN")?;
     let kafka_broker = var("KAFKA_BROKER")?;
     let kafka_detection_topic = var("KAFKA_TOPIC")?;
+    let kafka_rocks_topic = var("KAFKA_ROCKS_TOPIC").unwrap_or_else(|_| "rocks".to_string());
     let kafka_settings_topic =
         var("KAFKA_SETTINGS_TOPIC").unwrap_or_else(|_| "guild-settings-update".to_string());
     let kafka_guild_events_topic =
@@ -231,10 +232,13 @@ async fn main() -> Result<(), NorppaliveError> {
     )
     .start();
 
-    info!("Starting KafkaConsumerActor (detections)...");
+    info!(
+        "Starting KafkaConsumerActor (detections topic '{}', rocks topic '{}')...",
+        kafka_detection_topic, kafka_rocks_topic
+    );
     let _kafka_detection_addr = actors::kafka::KafkaRdkafkaActor::new(
         kafka_broker.clone(),
-        kafka_detection_topic,
+        vec![kafka_detection_topic, kafka_rocks_topic],
         discord_actor_addr,
     )
     .start();

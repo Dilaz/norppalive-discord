@@ -12,15 +12,19 @@ pub struct PollKafka;
 
 pub struct KafkaRdkafkaActor {
     pub broker_addr: String,
-    pub topic: String,
+    pub topics: Vec<String>,
     pub discord_actor_addr: Addr<DiscordActor>,
 }
 
 impl KafkaRdkafkaActor {
-    pub fn new(broker_addr: String, topic: String, discord_actor_addr: Addr<DiscordActor>) -> Self {
+    pub fn new(
+        broker_addr: String,
+        topics: Vec<String>,
+        discord_actor_addr: Addr<DiscordActor>,
+    ) -> Self {
         Self {
             broker_addr,
-            topic,
+            topics,
             discord_actor_addr,
         }
     }
@@ -55,7 +59,7 @@ impl Handler<PollKafka> for KafkaRdkafkaActor {
 
     fn handle(&mut self, _msg: PollKafka, _ctx: &mut Self::Context) -> Self::Result {
         let broker = self.broker_addr.clone();
-        let topic = self.topic.clone();
+        let topics = self.topics.clone();
         let discord_addr = self.discord_actor_addr.clone();
 
         actix::spawn(async move {
@@ -72,10 +76,12 @@ impl Handler<PollKafka> for KafkaRdkafkaActor {
                 }
             };
 
-            if let Err(e) = consumer.subscribe(&[&topic]) {
-                tracing::error!("Can't subscribe to specified topic: {}", e);
+            let topic_refs: Vec<&str> = topics.iter().map(String::as_str).collect();
+            if let Err(e) = consumer.subscribe(&topic_refs) {
+                tracing::error!("Can't subscribe to topics {:?}: {}", topics, e);
                 return;
             }
+            tracing::info!("Subscribed to Kafka topics: {:?}", topics);
 
             loop {
                 match consumer.recv().await {
